@@ -3,193 +3,118 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>中国煤炭高频数据看板</title>
+    <meta
+      name="description"
+      content="华泰电新能源大宗周度数据追踪，覆盖煤炭价格、库存、电力、国际能源大宗及钢铁化工。"
+    />
+    <title>【华泰电新】能源大宗周度数据追踪</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <aside class="sidebar">
-      <a class="brand" href="#overview" aria-label="返回市场概览">
-        <span class="brand-mark">C</span>
-        <span>
-          <strong>China Coal</strong>
-          <small>高频数据终端</small>
-        </span>
-      </a>
-
-      <nav class="nav" aria-label="主导航">
-        <a class="nav-item active" href="#overview">
-          <span class="nav-icon">01</span>
-          市场概览
-        </a>
-        <a class="nav-item" href="#price">
-          <span class="nav-icon">02</span>
-          价格
-        </a>
-        <a class="nav-item" href="#inventory">
-          <span class="nav-icon">03</span>
-          库存
-        </a>
-        <a class="nav-item" href="#transport">
-          <span class="nav-icon">04</span>
-          港口运输
-        </a>
-        <a class="nav-item" href="#demand">
-          <span class="nav-icon">05</span>
-          供需
-        </a>
-        <a class="nav-item" href="#weekly">
-          <span class="nav-icon">06</span>
-          周度指标
-        </a>
-      </nav>
-
-      <div class="sidebar-foot">
-        <span>数据源</span>
-        <strong>China Coal Database</strong>
-        <small id="sidebar-date"></small>
-      </div>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">CHINA COAL INTELLIGENCE</p>
-          <h1>中国煤炭高频数据看板</h1>
+    <div class="page-shell">
+      <header class="masthead" id="top">
+        <div class="brand-row">
+          <a class="brand" href="#top" aria-label="返回顶部">
+            <span class="brand-mark">HT</span>
+            <span class="brand-copy">
+              <strong>华泰电新</strong>
+              <small>ENERGY TRANSITION RESEARCH</small>
+            </span>
+          </a>
+          <div class="issue-meta">
+            <span>WEEKLY · <b id="issue-code"></b></span>
+            <span>数据更新 <b id="database-date"></b></span>
+          </div>
         </div>
-        <div class="topbar-actions">
-          <label class="search">
-            <span>搜索</span>
-            <input id="metric-search" type="search" placeholder="指标名称" />
-          </label>
-          <div class="date-badge">
-            <span>数据库更新</span>
-            <strong id="database-date"></strong>
+
+        <div class="hero-copy">
+          <p class="overline">ENERGY COMMODITY WEEKLY</p>
+          <h1 id="report-title">【华泰电新】能源大宗周度数据追踪</h1>
+          <p class="deck">
+            聚焦煤炭价格与库存、电力需求、国际能源大宗及钢铁化工高频变化。
+          </p>
+          <div class="hero-meta">
+            <span>周报基准日 <strong id="weekly-date"></strong></span>
+            <span>数据源 <strong>China Coal Database</strong></span>
+            <span><strong id="metric-count"></strong> 项高频指标</span>
           </div>
         </div>
       </header>
 
-      <section id="overview" class="hero">
-        <div>
-          <span class="section-kicker">WEEKLY SNAPSHOT</span>
-          <h2>煤炭市场核心指标</h2>
-          <p>
-            价格、库存、运输与需求的最新高频信号，基于数据库周度口径汇总。
-          </p>
-        </div>
-        <div class="range-switcher" aria-label="图表时间范围">
-          <button data-range="90">3个月</button>
-          <button data-range="365" class="active">1年</button>
-          <button data-range="1095">3年</button>
-          <button data-range="all">全部</button>
-        </div>
-      </section>
+      <nav class="section-nav" aria-label="报告目录">
+        <a href="#coal-price"><span>01</span>煤炭价格</a>
+        <a href="#inventory"><span>02</span>库存</a>
+        <a href="#power"><span>03</span>电力</a>
+        <a href="#global-energy"><span>04</span>国际能源大宗</a>
+        <a href="#steel-chemical"><span>05</span>钢铁化工</a>
+      </nav>
 
-      <section class="kpi-grid" id="kpi-grid" aria-label="核心指标"></section>
-
-      <section class="dashboard-grid">
-        <article class="panel panel-wide" id="price">
-          <div class="panel-head">
-            <div>
-              <span class="panel-label">PRICE</span>
-              <h3>动力煤价格走势</h3>
-            </div>
-            <span class="panel-unit">元/吨</span>
+      <main class="report">
+        <section class="report-section" id="coal-price">
+          <div class="section-number">01</div>
+          <div class="section-content">
+            <p class="section-en">COAL PRICE</p>
+            <h2>煤炭价格</h2>
+            <p class="narrative" id="coal-price-copy"></p>
           </div>
-          <div class="chart" data-chart="price"></div>
-        </article>
+        </section>
 
-        <article class="panel signal-panel">
-          <div class="panel-head">
-            <div>
-              <span class="panel-label">SIGNALS</span>
-              <h3>周度变化雷达</h3>
-            </div>
-            <div class="mini-toggle" aria-label="变化口径">
-              <button class="active" data-change="wow">环比</button>
-              <button data-change="yoy">同比</button>
-            </div>
+        <section class="report-section" id="inventory">
+          <div class="section-number">02</div>
+          <div class="section-content">
+            <p class="section-en">INVENTORY</p>
+            <h2>库存</h2>
+            <p class="narrative" id="inventory-copy"></p>
           </div>
-          <div id="signal-bars" class="signal-bars"></div>
-        </article>
+        </section>
 
-        <article class="panel" id="inventory">
-          <div class="panel-head">
-            <div>
-              <span class="panel-label">INVENTORY</span>
-              <h3>北方港口库存</h3>
-            </div>
-            <span class="panel-unit">万吨</span>
+        <section class="report-section" id="power">
+          <div class="section-number">03</div>
+          <div class="section-content">
+            <p class="section-en">POWER DEMAND</p>
+            <h2>电力</h2>
+            <p class="narrative" id="power-copy"></p>
           </div>
-          <div class="chart" data-chart="inventory"></div>
-        </article>
+        </section>
 
-        <article class="panel" id="transport">
-          <div class="panel-head">
-            <div>
-              <span class="panel-label">LOGISTICS</span>
-              <h3>北方三港运输</h3>
-            </div>
-            <span class="panel-unit">万吨</span>
+        <section class="report-section" id="global-energy">
+          <div class="section-number">04</div>
+          <div class="section-content">
+            <p class="section-en">GLOBAL ENERGY</p>
+            <h2>国际能源大宗</h2>
+            <p class="narrative" id="global-energy-copy"></p>
           </div>
-          <div class="chart" data-chart="transport"></div>
-        </article>
+        </section>
 
-        <article class="panel" id="demand">
-          <div class="panel-head">
-            <div>
-              <span class="panel-label">DEMAND</span>
-              <h3>旬度发电量</h3>
-            </div>
-            <span class="panel-unit">亿千瓦时</span>
+        <section class="report-section" id="steel-chemical">
+          <div class="section-number">05</div>
+          <div class="section-content">
+            <p class="section-en">STEEL &amp; CHEMICAL</p>
+            <h2>钢铁化工</h2>
+            <p class="narrative" id="steel-chemical-copy"></p>
           </div>
-          <div class="chart" data-chart="power"></div>
-        </article>
+        </section>
 
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <span class="panel-label">SUPPLY</span>
-              <h3>煤炭供给</h3>
-            </div>
-            <span class="panel-unit">百万吨</span>
-          </div>
-          <div class="chart" data-chart="supply"></div>
-        </article>
-      </section>
-
-      <section class="panel metrics-panel" id="weekly">
-        <div class="panel-head table-head">
+        <section class="contact-card">
           <div>
-            <span class="panel-label">WEEKLY MONITOR</span>
-            <h3>周度高频指标</h3>
+            <p class="contact-label">RESEARCH CONTACT</p>
+            <h2>欢迎交流</h2>
           </div>
-          <div class="table-filters" id="table-filters"></div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>板块</th>
-                <th>指标</th>
-                <th>最新值</th>
-                <th>单位</th>
-                <th>周度环比</th>
-                <th>同比</th>
-                <th>备注</th>
-              </tr>
-            </thead>
-            <tbody id="metrics-body"></tbody>
-          </table>
-        </div>
-      </section>
+          <p>刘俊 <i></i> 王嵩 <i></i> 马梦辰 <i></i> 李科毅</p>
+        </section>
+
+        <aside class="source-note">
+          <strong>数据说明</strong>
+          <span id="source-note-copy"></span>
+        </aside>
+      </main>
 
       <footer>
-        <span>本页面仅用于数据展示，不构成投资建议。</span>
-        <span id="footer-source"></span>
+        <span>华泰电新 · 能源转型研究</span>
+        <span>本页面仅用于数据展示与研究交流，不构成投资建议。</span>
       </footer>
-    </main>
+    </div>
 
-    <div id="chart-tooltip" class="chart-tooltip" role="status"></div>
     <script src="./data.js"></script>
     <script src="./app.js"></script>
   </body>
