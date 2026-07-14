@@ -2,230 +2,514 @@
   "use strict";
 
   const data = window.COAL_DATA;
-  const metrics = data.weeklyMetrics;
+  const state = {
+    range: 365,
+    changeType: "wow",
+    section: "全部",
+    search: "",
+  };
 
-  function getMetric(name) {
-    const item = metrics.find((metric) => metric.metric === name);
-    if (!item) {
-      throw new Error(`Missing weekly metric: ${name}`);
+  const chartById = Object.fromEntries(
+    data.charts.map((chart) => [chart.id, chart]),
+  );
+
+  function formatNumber(value) {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      return "--";
     }
-    return item;
-  }
-
-  function formatNumber(value, digits = 1) {
+    const abs = Math.abs(value);
+    const digits = abs >= 1000 ? 1 : abs >= 100 ? 1 : 2;
     return new Intl.NumberFormat("zh-CN", {
-      minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     }).format(value);
   }
 
-  function value(item, digits = 1, options = {}) {
-    let current = item.current;
-    if (options.percentUnit) current *= 100;
-    return `<strong class="metric-value">${formatNumber(current, digits)}${
-      options.noUnit ? "" : item.unit
-    }</strong>`;
+  function formatPercent(value) {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      return "--";
+    }
+    const percent = value * 100;
+    return `${percent > 0 ? "+" : ""}${percent.toFixed(1)}%`;
   }
 
-  function directionClass(value) {
+  function changeClass(value) {
     if (value > 0.00001) return "up";
     if (value < -0.00001) return "down";
     return "flat";
   }
 
-  function ratioChange(change, options = {}) {
-    if (options.flatWord && Math.abs(change) < 0.00001) {
-      return '<span class="change flat">持平</span>';
+  function changeArrow(value) {
+    if (value > 0.00001) return "↑";
+    if (value < -0.00001) return "↓";
+    return "→";
+  }
+
+  function latestPoint(series) {
+    return series && series.data.length
+      ? series.data[series.data.length - 1]
+      : null;
+  }
+
+  function previousPoint(series) {
+    return series && series.data.length > 1
+      ? series.data[series.data.length - 2]
+      : null;
+  }
+
+  function renderKpis() {
+    const grid = document.getElementById("kpi-grid");
+    grid.innerHTML = data.summaryCards
+      .map((item) => {
+        const sparkSource =
+          item.metric === "CCI5500"
+            ? chartById.price.series[0]
+            : item.metric.includes("库存")
+              ? chartById.inventory.series[0]
+              : chartById.power.series[1];
+        const latest = latestPoint(sparkSource);
+        const previous = previousPoint(sparkSource);
+        const sparkChange =
+          latest && previous ? (latest.value - previous.value) / previous.value : 0;
+
+        return `
+          <article class="kpi-card">
+            <div class="kpi-title">
+              <span>${item.metric}</span>
+              <span>${item.group || item.section}</span>
+            </div>
+            <div class="kpi-value">
+              ${formatNumber(item.current)}
+              <span class="kpi-unit">${item.unit}</span>
+            </div>
+            <div class="kpi-changes">
+              <span>环比 <b class="change ${changeClass(item.wow)}">${changeArrow(item.wow)} ${formatPercent(item.wow)}</b></span>
+              <span>同比 <b class="change ${changeClass(item.yoy)}">${changeArrow(item.yoy)} ${formatPercent(item.yoy)}</b></span>
+            </div>
+            <span hidden>${sparkChange}</span>
+          </article>
+        `;
+      })
+      .join("");
+  }
+
+  function filteredPoints(points, anchorDate) {
+    if (state.range === "all" || !points.length) return points;
+    const latest = new Date(anchorDate);
+    const cutoff = new Date(latest);
+    cutoff.setDate(cutoff.getDate() - Number(state.range));
+    return points.filter((point) => new Date(point.date) >= cutoff);
+  }
+
+  function svgElement(name, attributes = {}) {
+    const element = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      name,
+    );
+    Object.entries(attributes).forEach(([key, value]) =>
+      element.setAttribute(key, value),
+    );
+    return element;
+  }
+
+  function renderLineChart(container, chart) {
+    const chartLatest = Math.max(
+      ...chart.series.flatMap((item) =>
+        item.data.map((point) => new Date(point.date).getTime()),
+      ),
+    );
+    const series = chart.series
+      .map((item) => ({
+        ...item,
+        data: filteredPoints(item.data, chartLatest),
+      }))
+      .filter((item) => item.data.length);
+
+    container.innerHTML = "";
+    if (!series.length) {
+      container.innerHTML = '<div class="chart-empty">暂无可用数据</div>';
+      return;
     }
-    const percent = change * 100;
-    const prefix = percent >= 0 ? "+" : "";
-    return `<span class="change ${directionClass(change)}">${prefix}${formatNumber(
-      percent,
-      1,
-    )}%</span>`;
-  }
 
-  function pointChange(change) {
-    if (Math.abs(change) < 0.00001) {
-      return '<span class="change flat">持平</span>';
+    const width = Math.max(container.clientWidth || 540, 320);
+    const height = 274;
+    const margin = { top: 16, right: 16, bottom: 30, left: 48 };
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    const allPoints = series.flatMap((item) => item.data);
+    const dates = allPoints.map((point) => new Date(point.date).getTime());
+    const values = allPoints.map((point) => point.value);
+    const minDate = Math.min(...dates);
+    const maxDate = Math.max(...dates);
+    let minValue = Math.min(...values);
+    let maxValue = Math.max(...values);
+    const valuePadding = (maxValue - minValue || Math.abs(maxValue) || 1) * 0.12;
+    minValue -= valuePadding;
+    maxValue += valuePadding;
+
+    const x = (date) =>
+      margin.left +
+      ((new Date(date).getTime() - minDate) / (maxDate - minDate || 1)) *
+        plotWidth;
+    const y = (value) =>
+      margin.top +
+      (1 - (value - minValue) / (maxValue - minValue || 1)) * plotHeight;
+
+    const svg = svgElement("svg", {
+      viewBox: `0 0 ${width} ${height}`,
+      preserveAspectRatio: "none",
+      "aria-label": chart.title,
+    });
+    const defs = svgElement("defs");
+    const gradient = svgElement("linearGradient", {
+      id: `gradient-${chart.id}`,
+      x1: "0",
+      y1: "0",
+      x2: "0",
+      y2: "1",
+    });
+    gradient.appendChild(
+      svgElement("stop", {
+        offset: "0%",
+        "stop-color": series[0].color,
+        "stop-opacity": "0.22",
+      }),
+    );
+    gradient.appendChild(
+      svgElement("stop", {
+        offset: "100%",
+        "stop-color": series[0].color,
+        "stop-opacity": "0",
+      }),
+    );
+    defs.appendChild(gradient);
+    svg.appendChild(defs);
+
+    for (let index = 0; index <= 4; index += 1) {
+      const lineY = margin.top + (plotHeight / 4) * index;
+      svg.appendChild(
+        svgElement("line", {
+          x1: margin.left,
+          x2: width - margin.right,
+          y1: lineY,
+          y2: lineY,
+          stroke: "#dfe3e1",
+          "stroke-width": "1",
+        }),
+      );
+      const labelValue = maxValue - ((maxValue - minValue) / 4) * index;
+      const label = svgElement("text", {
+        x: margin.left - 8,
+        y: lineY + 3,
+        fill: "#7b8588",
+        "font-size": "9",
+        "text-anchor": "end",
+      });
+      label.textContent = formatNumber(labelValue);
+      svg.appendChild(label);
     }
-    const prefix = change >= 0 ? "+" : "";
-    return `<span class="change ${directionClass(change)}">${prefix}${formatNumber(
-      change,
-      2,
-    )}pct</span>`;
+
+    const tickCount = 4;
+    for (let index = 0; index <= tickCount; index += 1) {
+      const stamp = minDate + ((maxDate - minDate) / tickCount) * index;
+      const tickDate = new Date(stamp);
+      const label = svgElement("text", {
+        x: margin.left + (plotWidth / tickCount) * index,
+        y: height - 8,
+        fill: "#7b8588",
+        "font-size": "9",
+        "text-anchor":
+          index === 0 ? "start" : index === tickCount ? "end" : "middle",
+      });
+      label.textContent = `${tickDate.getFullYear()}-${String(
+        tickDate.getMonth() + 1,
+      ).padStart(2, "0")}`;
+      svg.appendChild(label);
+    }
+
+    series.forEach((item, seriesIndex) => {
+      const pathData = item.data
+        .map(
+          (point, index) =>
+            `${index === 0 ? "M" : "L"} ${x(point.date).toFixed(2)} ${y(
+              point.value,
+            ).toFixed(2)}`,
+        )
+        .join(" ");
+
+      if (seriesIndex === 0 && item.data.length > 1) {
+        const first = item.data[0];
+        const last = item.data[item.data.length - 1];
+        const areaData = `${pathData} L ${x(last.date)} ${
+          margin.top + plotHeight
+        } L ${x(first.date)} ${margin.top + plotHeight} Z`;
+        svg.appendChild(
+          svgElement("path", {
+            d: areaData,
+            fill: `url(#gradient-${chart.id})`,
+          }),
+        );
+      }
+
+      svg.appendChild(
+        svgElement("path", {
+          d: pathData,
+          fill: "none",
+          stroke: item.color,
+          "stroke-width": seriesIndex === 0 ? "2.3" : "1.6",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          "vector-effect": "non-scaling-stroke",
+        }),
+      );
+    });
+
+    const overlay = svgElement("rect", {
+      x: margin.left,
+      y: margin.top,
+      width: plotWidth,
+      height: plotHeight,
+      fill: "transparent",
+    });
+    const guide = svgElement("line", {
+      y1: margin.top,
+      y2: margin.top + plotHeight,
+      stroke: "#647176",
+      "stroke-dasharray": "3 3",
+      "stroke-width": "1",
+      visibility: "hidden",
+    });
+    svg.appendChild(guide);
+    svg.appendChild(overlay);
+
+    overlay.addEventListener("mousemove", (event) => {
+      const rect = svg.getBoundingClientRect();
+      const px = ((event.clientX - rect.left) / rect.width) * width;
+      const ratio = Math.max(0, Math.min(1, (px - margin.left) / plotWidth));
+      const targetStamp = minDate + ratio * (maxDate - minDate);
+      const valuesAtDate = series.map((item) => {
+        let best = item.data[0];
+        let distance = Infinity;
+        item.data.forEach((point) => {
+          const nextDistance = Math.abs(
+            new Date(point.date).getTime() - targetStamp,
+          );
+          if (nextDistance < distance) {
+            distance = nextDistance;
+            best = point;
+          }
+        });
+        return { item, point: best };
+      });
+      const primary = valuesAtDate[0].point;
+      guide.setAttribute("x1", x(primary.date));
+      guide.setAttribute("x2", x(primary.date));
+      guide.setAttribute("visibility", "visible");
+      showTooltip(
+        event,
+        `<strong>${primary.date}</strong>${valuesAtDate
+          .map(
+            ({ item, point }) =>
+              `<span style="color:${item.color}">●</span> ${item.name}：${formatNumber(point.value)} ${chart.unit}`,
+          )
+          .join("<br>")}`,
+      );
+    });
+    overlay.addEventListener("mouseleave", () => {
+      guide.setAttribute("visibility", "hidden");
+      hideTooltip();
+    });
+
+    container.appendChild(svg);
+    const legend = document.createElement("div");
+    legend.className = "chart-legend";
+    legend.innerHTML = series
+      .map(
+        (item) => `
+          <span class="legend-item">
+            <i class="legend-dot" style="background:${item.color}"></i>
+            ${item.name}
+          </span>
+        `,
+      )
+      .join("");
+    container.appendChild(legend);
   }
 
-  function dateText(date) {
-    return date.replaceAll("-", ".");
+  const tooltip = document.getElementById("chart-tooltip");
+
+  function showTooltip(event, html) {
+    tooltip.innerHTML = html;
+    tooltip.style.display = "block";
+    const left = Math.min(event.clientX + 14, window.innerWidth - 210);
+    const top = Math.max(event.clientY - 74, 10);
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
   }
 
-  function monthDay(date) {
-    const [, month, day] = date.split("-");
-    return `${month}${day}`;
+  function hideTooltip() {
+    tooltip.style.display = "none";
   }
 
-  function previousMonthLabel(date) {
-    const current = new Date(`${date}T00:00:00`);
-    current.setMonth(current.getMonth() - 1);
-    return `${current.getMonth() + 1}月`;
+  function renderCharts() {
+    document.querySelectorAll("[data-chart]").forEach((container) => {
+      renderLineChart(container, chartById[container.dataset.chart]);
+    });
   }
 
-  function previousTenDayLabel(period) {
-    if (period.endsWith("下旬")) return period.replace("下旬", "中旬");
-    if (period.endsWith("中旬")) return period.replace("中旬", "上旬");
-    return "上一旬";
+  function renderSignals() {
+    const metrics = data.weeklyMetrics
+      .filter(
+        (item) =>
+          item[state.changeType] !== null &&
+          Math.abs(item[state.changeType]) < 2,
+      )
+      .sort(
+        (a, b) =>
+          Math.abs(b[state.changeType]) - Math.abs(a[state.changeType]),
+      )
+      .slice(0, 8);
+    const max = Math.max(
+      ...metrics.map((item) => Math.abs(item[state.changeType])),
+      0.01,
+    );
+    document.getElementById("signal-bars").innerHTML = metrics
+      .map((item) => {
+        const value = item[state.changeType];
+        const width = Math.min(50, (Math.abs(value) / max) * 50);
+        const positive = value >= 0;
+        return `
+          <div class="signal-row">
+            <span class="signal-name" title="${item.metric}">${item.metric}</span>
+            <span class="signal-track">
+              <i
+                class="signal-fill ${positive ? "positive" : "negative"}"
+                style="${positive ? "left:50%" : `left:${50 - width}%`};width:${width}%"
+              ></i>
+            </span>
+            <span class="signal-value ${changeClass(value)}">${formatPercent(value)}</span>
+          </div>
+        `;
+      })
+      .join("");
   }
 
-  function setCopy(id, html) {
-    document.getElementById(id).innerHTML = html;
+  function renderTableFilters() {
+    const sections = [
+      "全部",
+      ...new Set(data.weeklyMetrics.map((item) => item.section).filter(Boolean)),
+    ];
+    document.getElementById("table-filters").innerHTML = sections
+      .map(
+        (section) =>
+          `<button class="${state.section === section ? "active" : ""}" data-section="${section}">${section}</button>`,
+      )
+      .join("");
   }
 
-  const cci5500 = getMetric("CCI5500");
-  const liulin = getMetric("CCI柳林低硫");
-  const import5500 = getMetric("CCI进口5500");
-  const newc = getMetric("纽卡斯尔6000卡");
-  const lowVol = getMetric("低挥发主焦煤");
+  function renderTable() {
+    const rows = data.weeklyMetrics.filter((item) => {
+      const sectionMatch =
+        state.section === "全部" || item.section === state.section;
+      const searchMatch = `${item.metric}${item.group}${item.section}`
+        .toLowerCase()
+        .includes(state.search.toLowerCase());
+      return sectionMatch && searchMatch;
+    });
 
-  const coastalInventory = getMetric("沿海八省库存");
-  const inlandInventory = getMetric("内陆十七省库存");
+    document.getElementById("metrics-body").innerHTML = rows
+      .map(
+        (item) => `
+          <tr>
+            <td class="metric-group">${item.group || item.section}</td>
+            <td>${item.metric}</td>
+            <td>${formatNumber(item.current)}</td>
+            <td>${item.unit}</td>
+            <td><span class="pill ${changeClass(item.wow)}">${formatPercent(item.wow)}</span></td>
+            <td><span class="pill ${changeClass(item.yoy)}">${formatPercent(item.yoy)}</span></td>
+            <td class="metric-group">${item.note || "--"}</td>
+          </tr>
+        `,
+      )
+      .join("");
+  }
 
-  const totalPower = getMetric("旬度日均总发电量");
-  const thermalPower = getMetric("旬度日均火电发电量");
-  const hydroPower = getMetric("旬度日均水电发电量");
-  const coastalBurn = getMetric("沿海八省日耗");
-  const inlandBurn = getMetric("内陆十七省日耗");
+  function bindEvents() {
+    document.querySelector(".range-switcher").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-range]");
+      if (!button) return;
+      state.range =
+        button.dataset.range === "all" ? "all" : Number(button.dataset.range);
+      document
+        .querySelectorAll("[data-range]")
+        .forEach((item) => item.classList.toggle("active", item === button));
+      renderCharts();
+    });
 
-  const wti = getMetric("WTI原油");
-  const brent = getMetric("布伦特原油");
-  const ttf = getMetric("荷兰TTF天然气");
-  const hh = getMetric("美国Henry Hub天然气");
-  const uraniumSpot = getMetric("天然铀现货价格");
-  const uraniumContract = getMetric("天然铀长协价格");
+    document.querySelector(".mini-toggle").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-change]");
+      if (!button) return;
+      state.changeType = button.dataset.change;
+      document
+        .querySelectorAll("[data-change]")
+        .forEach((item) => item.classList.toggle("active", item === button));
+      renderSignals();
+    });
 
-  const moltenIron = getMetric("247家日均铁水产量");
-  const blastFurnace = getMetric("247家钢铁高炉开工率");
-  const chemicalCoal = getMetric("化工行业合计耗煤");
+    document.getElementById("table-filters").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-section]");
+      if (!button) return;
+      state.section = button.dataset.section;
+      renderTableFilters();
+      renderTable();
+    });
 
-  const issue = monthDay(data.meta.databaseDate);
-  const title = `【华泰电新】能源大宗周度数据追踪${issue}`;
-  document.title = title;
-  document.getElementById("report-title").textContent = title;
-  document.getElementById("issue-code").textContent = issue;
-  document.getElementById("database-date").textContent = dateText(
-    data.meta.databaseDate,
-  );
-  document.getElementById("weekly-date").textContent = dateText(
-    data.meta.weeklyDate,
-  );
-  document.getElementById("metric-count").textContent = metrics.length;
+    document.getElementById("metric-search").addEventListener("input", (event) => {
+      state.search = event.target.value.trim();
+      renderTable();
+      document.getElementById("weekly").scrollIntoView({ block: "start" });
+    });
 
-  setCopy(
-    "coal-price-copy",
-    `港口5500卡动力煤价格${value(cci5500, 0)}，周度环比${ratioChange(
-      cci5500.wow,
-    )}，同比${ratioChange(cci5500.yoy)}；山西柳林低硫主焦煤价格${value(
-      liulin,
-      0,
-    )}，周度环比${ratioChange(liulin.wow, {
-      flatWord: true,
-    })}，同比${ratioChange(liulin.yoy)}；CCI进口5500卡动力煤价格${value(
-      import5500,
-      0,
-    )}，周度环比${ratioChange(import5500.wow)}，同比${ratioChange(
-      import5500.yoy,
-    )}；NEWC动力煤现货价格${value(newc, 0)}，周度环比${ratioChange(
-      newc.wow,
-    )}，同比${ratioChange(newc.yoy)}；国际低挥发主焦煤${value(
-      lowVol,
-      0,
-    )}，周度环比${ratioChange(lowVol.wow)}，同比${ratioChange(lowVol.yoy)}。`,
-  );
+    const navItems = [...document.querySelectorAll(".nav-item")];
+    const sections = navItems
+      .map((item) => document.querySelector(item.getAttribute("href")))
+      .filter(Boolean);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          navItems.forEach((item) =>
+            item.classList.toggle(
+              "active",
+              item.getAttribute("href") === `#${entry.target.id}`,
+            ),
+          );
+        });
+      },
+      { rootMargin: "-20% 0px -70% 0px" },
+    );
+    sections.forEach((section) => observer.observe(section));
 
-  setCopy(
-    "inventory-copy",
-    `沿海八省电厂库存${value(coastalInventory, 0)}<span class="annotation">（库存和日耗本周数据为${
-      coastalInventory.note
-    }平均）</span>，周度环比${ratioChange(
-      coastalInventory.wow,
-    )}，同比${ratioChange(coastalInventory.yoy)}；内陆十七省电厂库存${value(
-      inlandInventory,
-      0,
-    )}，周度环比${ratioChange(inlandInventory.wow)}，同比${ratioChange(
-      inlandInventory.yoy,
-    )}。`,
-  );
+    let resizeTimer;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(renderCharts, 120);
+    });
+  }
 
-  const powerPeriod = totalPower.note.split("，")[0];
-  const previousPowerPeriod = previousTenDayLabel(powerPeriod);
-  setCopy(
-    "power-copy",
-    `${powerPeriod}日均总发电量${value(totalPower, 1)}，相对${previousPowerPeriod}${ratioChange(
-      totalPower.wow,
-    )}，同比${ratioChange(totalPower.yoy)}；${powerPeriod}日均火电发电量${value(
-      thermalPower,
-      1,
-    )}，相对${previousPowerPeriod}${ratioChange(thermalPower.wow)}，同比${ratioChange(
-      thermalPower.yoy,
-    )}；${powerPeriod}日均水电发电量${value(
-      hydroPower,
-      1,
-    )}，相对${previousPowerPeriod}${ratioChange(hydroPower.wow)}，同比${ratioChange(
-      hydroPower.yoy,
-    )}；沿海八省电厂日耗${value(coastalBurn, 0)}<span class="annotation">（本周数据为${
-      coastalBurn.note
-    }）</span>，周度环比${ratioChange(coastalBurn.wow)}，同比${ratioChange(
-      coastalBurn.yoy,
-    )}；内陆十七省日耗${value(inlandBurn, 0)}，周度环比${ratioChange(
-      inlandBurn.wow,
-    )}，同比${ratioChange(inlandBurn.yoy)}。`,
-  );
+  function init() {
+    document.getElementById("database-date").textContent =
+      data.meta.databaseDate;
+    document.getElementById("sidebar-date").textContent =
+      `更新至 ${data.meta.weeklyDate}`;
+    document.getElementById("footer-source").textContent =
+      `${data.meta.source} · ${data.meta.sheetCount} 张工作表`;
+    renderKpis();
+    renderCharts();
+    renderSignals();
+    renderTableFilters();
+    renderTable();
+    bindEvents();
+  }
 
-  setCopy(
-    "global-energy-copy",
-    `WTI原油期货结算价${value(wti, 1)}，周度环比${ratioChange(
-      wti.wow,
-    )}，同比${ratioChange(wti.yoy)}；Brent原油期货结算价${value(
-      brent,
-      1,
-    )}，周度环比${ratioChange(brent.wow)}，同比${ratioChange(
-      brent.yoy,
-    )}；TTF天然气${value(ttf, 1)}，周度环比${ratioChange(
-      ttf.wow,
-    )}，同比${ratioChange(ttf.yoy)}；HH天然气${value(
-      hh,
-      1,
-    )}，周度环比${ratioChange(hh.wow)}，同比${ratioChange(
-      hh.yoy,
-    )}；天然铀现货价格${value(uraniumSpot, 1)}，周度环比${ratioChange(
-      uraniumSpot.wow,
-      { flatWord: true },
-    )}，同比${ratioChange(uraniumSpot.yoy)}；${previousMonthLabel(
-      data.meta.weeklyDate,
-    )}长协价格${value(uraniumContract, 1)}，月环比${ratioChange(
-      uraniumContract.wow,
-    )}，同比${ratioChange(uraniumContract.yoy)}。`,
-  );
-
-  setCopy(
-    "steel-chemical-copy",
-    `247家钢铁企业日均铁水产量${value(
-      moltenIron,
-      1,
-    )}，周度环比${ratioChange(moltenIron.wow)}，同比${ratioChange(
-      moltenIron.yoy,
-    )}；247家钢铁企业高炉开工率${value(blastFurnace, 1, {
-      percentUnit: true,
-    })}，周度环比${pointChange(blastFurnace.wow)}，同比${pointChange(
-      blastFurnace.yoy,
-    )}。主要煤化工品种（甲醇、合成氨、PVC、纯碱、乙二醇）合计耗煤量${value(
-      chemicalCoal,
-      1,
-    )}，周度环比${ratioChange(chemicalCoal.wow)}，同比${ratioChange(
-      chemicalCoal.yoy,
-    )}。`,
-  );
-
-  document.getElementById("source-note-copy").textContent =
-    `数据来自 ${data.meta.source}，数据库更新至 ${data.meta.databaseDate}，周度指标基准日为 ${data.meta.weeklyDate}。各指标口径及备注以原始数据库为准。`;
+  init();
 })();
